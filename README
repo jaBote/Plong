@@ -2,3 +2,5 @@ Simple pong implementation in vhdl.
 
 For fully working source, use v1.0 tagged files. Later commits are not
 guaranteed to work.
+
+This project will be eventually changed into an Arkanoid game, for a College project.
