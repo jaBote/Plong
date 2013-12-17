@@ -1,2 +1,5 @@
 # Ignore Notepad++ backups
 /nppBackup
+
+# Damn Windows thumbnails...
+Thumbs.db
