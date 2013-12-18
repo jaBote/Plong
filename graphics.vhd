@@ -6,9 +6,7 @@ use ieee.std_logic_unsigned.all;
 entity graphics is
     port(
         clk, not_reset: in  std_logic;
-        nes1_up, nes1_down: in  std_logic;
-        nes2_up, nes2_down: in  std_logic;
-        nes_start: in  std_logic;
+		ctl_up, ctl_down: in  std_logic;
         px_x, px_y: in  std_logic_vector(9 downto 0);
         video_on: in  std_logic;
         rgb_stream: out std_logic_vector(2  downto 0);
@@ -94,7 +92,7 @@ architecture dispatcher of graphics is
     signal ball_on, bar_on: std_logic;
 begin
 
-    process(state, ball_x, nes_start, score_1, score_2)
+    process(state, ball_x, ctl_up, ctl_down, score_1, score_2)
     begin
         state_next <= state;
         ball_enable <= '0';
@@ -111,7 +109,7 @@ begin
                 ball_enable <= '0';
                 if score_1 = 7 or score_2 = 7 then
                     state_next <= game_over;
-                elsif nes_start = '1' then
+                elsif (ctl_up = '1' OR ctl_down = '1') then
                     state_next <= playing;
                 end if;
             when playing =>
@@ -128,7 +126,7 @@ begin
                     ball_miss <= '1';
                 end if;
             when game_over =>
-                if nes_start = '1' then
+                if (ctl_up = '1' OR ctl_down = '1') then
                     state_next <= start;
                 end if;
         end case;
@@ -308,31 +306,20 @@ begin
     end process;
 
     bar_control: process(
-        bar_1_y, bar_2_y,
-        nes1_up, nes1_down,
-        nes2_up, nes2_down
+        bar_1_y,
+        ctl_up, ctl_down
     )
     begin
         bar_1_y_next <= bar_1_y;
         bar_2_y_next <= bar_2_y;
         
-        if nes1_up = '1' then
+        if ctl_up = '1' then
             if bar_1_y > 0 then
                 bar_1_y_next <= bar_1_y - 1;
             end if;
-        elsif nes1_down = '1' then
+        elsif ctl_down = '1' then
             if bar_1_y < SCREEN_HEIGHT - BAR_HEIGHT - 1 then
                 bar_1_y_next <= bar_1_y + 1;
-            end if;
-        end if;
-
-        if nes2_up = '1' then
-            if bar_2_y > 0 then
-                bar_2_y_next <= bar_2_y - 1;
-            end if;
-        elsif nes2_down = '1' then
-            if bar_2_y < SCREEN_HEIGHT - BAR_HEIGHT - 1 then
-                bar_2_y_next <= bar_2_y + 1;
             end if;
         end if;
     end process;
