@@ -22,22 +22,8 @@ architecture dispatcher of graphics is
     type game_states is (start, waiting, playing, game_over);
     signal state, state_next: game_states;
 
-    type counter_storage is array(0 to 3) of std_logic_vector(17 downto 0);
-    constant COUNTER_VALUES: counter_storage :=
-    (
-        "110010110111001101", -- 208333
-        "101000101100001011", -- 166667
-        "100001111010001001", -- 138889
-        "011101000100001000"  -- 119048
-    );
-
-    -- counters to determine ball control frequency
-    signal ball_control_counter,
-           ball_control_counter_next: std_logic_vector(17 downto 0);
-    signal ball_control_value: integer;
-
     -- counts how many times the ball hits the bar
-    -- used to determine ball speed
+    -- used for nothing in particular
     signal bounce_counter, bounce_counter_next: std_logic_vector(7 downto 0);
 
     constant MIDDLE_LINE_POS: integer := SCREEN_WIDTH / 2;
@@ -143,7 +129,6 @@ begin
             ball_h_dir <= '0';
             ball_v_dir <= '0';
             bounce_counter <= (others => '0');
-            ball_control_counter <= (others => '0');
             score_1 <= (others => '0');
             score_2 <= (others => '0');
         elsif clk'event and clk = '0' then
@@ -155,7 +140,6 @@ begin
             ball_h_dir <= ball_h_dir_next;
             ball_v_dir <= ball_v_dir_next;
             bounce_counter <= bounce_counter_next;
-            ball_control_counter <= ball_control_counter_next;
             score_1 <= score_1_next;
             score_2 <= score_2_next;
         end if;
@@ -211,7 +195,6 @@ begin
     font_rgb <= "000" when font_pixel = '1' else "111";
 
     direction_control: process(
-        ball_control_counter,
         ball_x, ball_y,
         ball_h_dir, ball_v_dir,
         ball_h_dir_next, ball_v_dir_next,
@@ -227,38 +210,36 @@ begin
         -- due to slower clock! Too lazy to fix now :D
         --
 
-        if ball_control_counter = 0 then
-            if ball_x = bar_1_pos + BAR_WIDTH and
-               ball_y + BALL_SIZE > bar_1_y and
-               ball_y < bar_1_y + BAR_HEIGHT then
+        if  ball_x = bar_1_pos + BAR_WIDTH and
+            ball_y + BALL_SIZE > bar_1_y and
+            ball_y < bar_1_y + BAR_HEIGHT then
                 ball_h_dir_next <= '1';
                 ball_bounce <= '1';
-            elsif ball_x + BALL_SIZE = bar_2_pos and
-                  ball_y + BALL_SIZE > bar_2_y and
-                  ball_y < bar_2_y + BAR_HEIGHT then
+        elsif ball_x + BALL_SIZE = bar_2_pos and
+            ball_y + BALL_SIZE > bar_2_y and
+            ball_y < bar_2_y + BAR_HEIGHT then
                 ball_h_dir_next <= '0';
                 ball_bounce <= '1';
-            elsif ball_x < bar_1_pos + BAR_WIDTH and
-                  ball_x + BALL_SIZE > bar_1_pos then
+        elsif ball_x < bar_1_pos + BAR_WIDTH and
+            ball_x + BALL_SIZE > bar_1_pos then
                 if ball_y + BALL_SIZE = bar_1_y then
                     ball_v_dir_next <= '0';
                 elsif ball_y = bar_1_y + BAR_HEIGHT then
                     ball_v_dir_next <= '1';
                 end if;
-            elsif ball_x + BALL_SIZE > bar_2_pos and
-                  ball_x < bar_2_pos + BAR_WIDTH then
+        elsif ball_x + BALL_SIZE > bar_2_pos and
+            ball_x < bar_2_pos + BAR_WIDTH then
                 if ball_y + BALL_SIZE = bar_2_y then
                     ball_v_dir_next <= '0';
                 elsif ball_y = bar_2_y + BAR_HEIGHT then
                     ball_v_dir_next <= '1';
                 end if;
-            end if;
+        end if;
             
-            if ball_y = 0 then
-                ball_v_dir_next <= '1';
-            elsif ball_y = SCREEN_HEIGHT - BALL_SIZE then
-                ball_v_dir_next <= '0';
-            end if;
+        if ball_y = 0 then
+            ball_v_dir_next <= '1';
+        elsif ball_y = SCREEN_HEIGHT - BALL_SIZE then
+            ball_v_dir_next <= '0';
         end if;
     end process;
 
@@ -266,16 +247,7 @@ begin
                            (others => '0') when ball_miss = '1' else
                            bounce_counter;
 
-    ball_control_value <= 0 when bounce_counter < 4 else
-                 1 when bounce_counter < 15 else
-                 2 when bounce_counter < 25 else
-                 3;
-
-    ball_control_counter_next <= ball_control_counter + 1 when ball_control_counter < COUNTER_VALUES(ball_control_value) else
-                        (others => '0');
-
     ball_control: process(
-        ball_control_counter,
         ball_x, ball_y,
         ball_x_next, ball_y_next,
         ball_h_dir, ball_v_dir,
@@ -286,18 +258,15 @@ begin
         ball_y_next <= ball_y;
 
         if ball_enable = '1' then
-            if ball_control_counter = 0 then
-                if ball_h_dir = '1' then
-                    ball_x_next <= ball_x + 1;
-                else
-                    ball_x_next <= ball_x - 1;
-                end if;
-
-                if ball_v_dir = '1' then
-                    ball_y_next <= ball_y + 1;
-                else
-                    ball_y_next <= ball_y - 1;
-                end if;
+            if ball_h_dir = '1' then
+                ball_x_next <= ball_x + 1;
+            else
+                ball_x_next <= ball_x - 1;
+            end if;
+            if ball_v_dir = '1' then
+                ball_y_next <= ball_y + 1;
+            else
+                ball_y_next <= ball_y - 1;
             end if;
         else
             ball_x_next <= conv_std_logic_vector(SCREEN_WIDTH / 2 - BALL_SIZE / 2, 10);
