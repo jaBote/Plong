@@ -31,7 +31,8 @@ architecture dispatcher of graphics is
     signal middle_line_rgb: std_logic_vector(2 downto 0);
 
     signal score_1, score_1_next: std_logic_vector(5 downto 0);
-    signal score_2, score_2_next: std_logic_vector(5 downto 0);
+    signal cur_lives, cur_lives_next: std_logic_vector(5 downto 0);
+	constant MAX_LIVES: integer := 3;
 
     signal score_on: std_logic;
     signal current_score: std_logic_vector(5 downto 0);
@@ -62,7 +63,6 @@ architecture dispatcher of graphics is
     signal ball_bounce, ball_miss: std_logic;
 
     constant BAR_1_POS: integer := 20;
-    constant BAR_2_POS: integer := 600;
 
     constant BAR_WIDTH: integer := 20;
     constant BAR_HEIGHT: integer := 64;
@@ -72,28 +72,25 @@ architecture dispatcher of graphics is
     signal bar_data: std_logic_vector(0 to BAR_WIDTH - 1);
     signal bar_pixel: std_logic;
     signal bar_rgb: std_logic_vector(2 downto 0);
-    signal bar_1_y, bar_1_y_next,
-           bar_2_y, bar_2_y_next: std_logic_vector(9 downto 0);
+    signal bar_1_y, bar_1_y_next: std_logic_vector(9 downto 0);
 
     signal ball_on, bar_on: std_logic;
 begin
 
-    process(state, ball_x, ctl_up, ctl_down, score_1, score_2)
+    process(state, ball_x, ctl_up, ctl_down, cur_lives)
     begin
         state_next <= state;
         ball_enable <= '0';
         ball_miss <= '0';
-        score_1_next <= score_1;
-        score_2_next <= score_2;
+        cur_lives_next <= cur_lives;
 
         case state is
             when start =>
-                score_1_next <= (others => '0');
-                score_2_next <= (others => '0');
+                cur_lives_next <= conv_std_logic_vector(MAX_LIVES,5);
                 state_next <= waiting;
             when waiting =>
                 ball_enable <= '0';
-                if score_1 = 7 or score_2 = 7 then
+                if cur_lives = 0  then
                     state_next <= game_over;
                 elsif (ctl_up = '1' OR ctl_down = '1') then
                     state_next <= playing;
@@ -101,13 +98,8 @@ begin
             when playing =>
                 ball_enable <= '1';
                 if ball_x = 0 then
-                    -- player 2 wins
-                    score_2_next <= score_2 + 1;
-                    state_next <= waiting;
-                    ball_miss <= '1';
-                elsif ball_x = SCREEN_WIDTH - BALL_SIZE then
-                    -- player 1 wins
-                    score_1_next <= score_1 + 1;
+                    -- player 1 loses a live
+                    cur_lives_next <= cur_lives - 1;
                     state_next <= waiting;
                     ball_miss <= '1';
                 end if;
@@ -125,30 +117,29 @@ begin
             ball_x <= (others => '0');
             ball_y <= (others => '0');
             bar_1_y <= conv_std_logic_vector(SCREEN_HEIGHT / 2 - BAR_HEIGHT / 2, 10);
-            bar_2_y <= conv_std_logic_vector(SCREEN_HEIGHT / 2 - BAR_HEIGHT / 2, 10);
             ball_h_dir <= '0';
             ball_v_dir <= '0';
             bounce_counter <= (others => '0');
             score_1 <= (others => '0');
-            score_2 <= (others => '0');
+            cur_lives <= (others => '0');
         elsif clk'event and clk = '0' then
             state <= state_next;
             ball_x <= ball_x_next;
             ball_y <= ball_y_next;
             bar_1_y <= bar_1_y_next;
-            bar_2_y <= bar_2_y_next;
             ball_h_dir <= ball_h_dir_next;
             ball_v_dir <= ball_v_dir_next;
             bounce_counter <= bounce_counter_next;
             score_1 <= score_1_next;
-            score_2 <= score_2_next;
+            cur_lives <= cur_lives_next;
         end if;
     end process;
 
     score_on <= '1' when px_y(9 downto 3) = 1 and
                          (px_x(9 downto 3) = 42 or px_x(9 downto 3) = 37) else
                 '0';
-    current_score <= score_1 when px_x < 320 else score_2;
+    -- We used the previous score_2 signal to store lives
+	current_score <= score_1 when px_x < 320 else cur_lives;
     -- numbers start at memory location 128
     -- '1' starts at 136, '2' at 144 and so on
     score_font_addr <= conv_std_logic_vector(128, 9) +
@@ -161,18 +152,14 @@ begin
     player_id_font_addr <= "010001000" when px_x < 320 else "010010000";
 
     message_on <= '1' when state = game_over and
-                           -- message on player_1's side
-                           ((score_1 > score_2 and
-                             px_x(9 downto 3) >= 12 and
-                             px_x(9 downto 3) < 26 and
-                             px_y(9 downto 3) = 29) or
-                           -- message on player_2's side
-                            (score_2 > score_1 and
-                             px_x(9 downto 3) >= 52 and
-                             px_x(9 downto 3) < 66 and
-                             px_y(9 downto 3) = 29)) else
+                           -- message on the center of the screen
+                           ( px_x(9 downto 3) >= 32 and
+                             px_x(9 downto 3) < 46 and
+                             px_y(9 downto 3) = 29 ) else
                   '0';
-    with px_x(9 downto 3) select
+    
+	-- TODO change into GAME OVER
+	with px_x(9 downto 3) select
         message_font_addr <= "110000000" when "0110100"|"0001100", -- P
                              "101100000" when "0110101"|"0001101", -- L
                              "100001000" when "0110110"|"0001110", -- A
@@ -198,7 +185,7 @@ begin
         ball_x, ball_y,
         ball_h_dir, ball_v_dir,
         ball_h_dir_next, ball_v_dir_next,
-        bar_1_y, bar_2_y
+        bar_1_y
     )
     begin
         ball_h_dir_next <= ball_h_dir;
@@ -215,23 +202,16 @@ begin
             ball_y < bar_1_y + BAR_HEIGHT then
                 ball_h_dir_next <= '1';
                 ball_bounce <= '1';
-        elsif ball_x + BALL_SIZE = bar_2_pos and
-            ball_y + BALL_SIZE > bar_2_y and
-            ball_y < bar_2_y + BAR_HEIGHT then
+		-- We've removed bar 2, so check if it collides with right side of screen and rebound
+        elsif ball_x + BALL_SIZE = SCREEN_WIDTH then
                 ball_h_dir_next <= '0';
-                ball_bounce <= '1';
+		-- Good comment: This will happen if you hit the ball with the side of the bar: you'll invert ball's y direction but... you'll still lose a life?
+		-- PROTIP: I've just realised objects here are described by their bottom left pixel
         elsif ball_x < bar_1_pos + BAR_WIDTH and
             ball_x + BALL_SIZE > bar_1_pos then
                 if ball_y + BALL_SIZE = bar_1_y then
                     ball_v_dir_next <= '0';
                 elsif ball_y = bar_1_y + BAR_HEIGHT then
-                    ball_v_dir_next <= '1';
-                end if;
-        elsif ball_x + BALL_SIZE > bar_2_pos and
-            ball_x < bar_2_pos + BAR_WIDTH then
-                if ball_y + BALL_SIZE = bar_2_y then
-                    ball_v_dir_next <= '0';
-                elsif ball_y = bar_2_y + BAR_HEIGHT then
                     ball_v_dir_next <= '1';
                 end if;
         end if;
@@ -280,7 +260,6 @@ begin
     )
     begin
         bar_1_y_next <= bar_1_y;
-        bar_2_y_next <= bar_2_y;
         
         if ctl_up = '1' then
             if bar_1_y > 0 then
@@ -302,15 +281,11 @@ begin
                         px_y < (ball_y + BALL_SIZE) else
                '0';
 
-    -- whether bar_1 or bar_2 is on
+    -- whether bar_1 is on
     bar_on <= '1' when (px_x >= BAR_1_POS and
                         px_x < BAR_1_POS + BAR_WIDTH and
                         px_y >= bar_1_y and
-                        px_y < bar_1_y + BAR_HEIGHT) or
-                       (px_x >= BAR_2_POS and
-                        px_x < BAR_2_POS + BAR_WIDTH and 
-                        px_y >= bar_2_y and
-                        px_y < bar_2_y + BAR_HEIGHT) else
+                        px_y < bar_1_y + BAR_HEIGHT) else
               '0';
 
     ball_addr <= px_y(3 downto 0) - ball_y(3 downto 0);
@@ -319,9 +294,8 @@ begin
     ball_rgb <= "000" when ball_pixel = '1' else "111";
 
 
-    bar_addr <= (px_y(5 downto 0) - bar_1_y(5 downto 0)) when px_x < 320 else
-                (px_y(5 downto 0) - bar_2_y(5 downto 0));
-    bar_pos <= BAR_1_POS when px_x < 320 else BAR_2_POS;
+    bar_addr <= (px_y(5 downto 0) - bar_1_y(5 downto 0));
+    bar_pos <= BAR_1_POS;
     bar_pixel <= bar_data(conv_integer(px_x - bar_pos));
     bar_rgb <= "000" when bar_pixel = '1' else "111";
 
