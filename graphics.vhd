@@ -119,6 +119,9 @@ begin
             bounce_counter <= (others => '0');
             score_1 <= (others => '0');
             cur_lives <= (others => '0');
+			-- This way, when enabled, ball will start descending to right at 45 degrees
+			ball_dx <= 1;
+			ball_dy <= 1;
         elsif clk'event and clk = '0' then
             state <= state_next;
             ball_x <= ball_x_next;
