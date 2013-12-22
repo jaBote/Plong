@@ -6,7 +6,7 @@ use ieee.std_logic_unsigned.all;
 entity graphics is
     port(
         clk, not_reset: in  std_logic;
-		ctl_up, ctl_down: in  std_logic;
+		ctl_left, ctl_right: in  std_logic;
         px_x, px_y: in  std_logic_vector(9 downto 0);
         video_on: in  std_logic;
         rgb_stream: out std_logic_vector(2  downto 0);
@@ -25,10 +25,6 @@ architecture dispatcher of graphics is
     -- counts how many times the ball hits the bar
     -- used for nothing in particular
     signal bounce_counter, bounce_counter_next: std_logic_vector(7 downto 0);
-
-    constant MIDDLE_LINE_POS: integer := SCREEN_WIDTH / 2;
-    signal middle_line_on: std_logic;
-    signal middle_line_rgb: std_logic_vector(2 downto 0);
 
     signal score_1, score_1_next: std_logic_vector(5 downto 0);
     signal cur_lives, cur_lives_next: std_logic_vector(5 downto 0);
@@ -57,27 +53,28 @@ architecture dispatcher of graphics is
     signal ball_rgb: std_logic_vector(2 downto 0);
     signal ball_x, ball_x_next: std_logic_vector(9 downto 0);
     signal ball_y, ball_y_next: std_logic_vector(9 downto 0);
+	signal ball_dx, ball_dy: integer;
 
     signal ball_h_dir, ball_h_dir_next, ball_v_dir, ball_v_dir_next: std_logic;
 
     signal ball_bounce, ball_miss: std_logic;
 
-    constant BAR_1_POS: integer := 20;
+    constant BAR_1_POS: integer := 20; -- This is now the vertical height the bar starts in
 
-    constant BAR_WIDTH: integer := 20;
-    constant BAR_HEIGHT: integer := 64;
+    constant BAR_WIDTH: integer := 128;
+    constant BAR_HEIGHT: integer := 20;
 
     signal bar_pos: integer;
     signal bar_addr: std_logic_vector(5 downto 0);
     signal bar_data: std_logic_vector(0 to BAR_WIDTH - 1);
     signal bar_pixel: std_logic;
     signal bar_rgb: std_logic_vector(2 downto 0);
-    signal bar_1_y, bar_1_y_next: std_logic_vector(9 downto 0);
+    signal bar_1_x, bar_1_x_next: std_logic_vector(9 downto 0);
 
     signal ball_on, bar_on: std_logic;
 begin
 
-    process(state, ball_x, ctl_up, ctl_down, cur_lives)
+    process(state, ball_y, ctl_left, ctl_right, cur_lives)
     begin
         state_next <= state;
         ball_enable <= '0';
@@ -92,19 +89,19 @@ begin
                 ball_enable <= '0';
                 if cur_lives = 0  then
                     state_next <= game_over;
-                elsif (ctl_up = '1' OR ctl_down = '1') then
+                elsif (ctl_left = '1' OR ctl_right = '1') then
                     state_next <= playing;
                 end if;
             when playing =>
                 ball_enable <= '1';
-                if ball_x = 0 then
-                    -- player 1 loses a live
+                if ball_y = 0 then
+                    -- player 1 loses a live. Y = 0 is the bottom of the screen
                     cur_lives_next <= cur_lives - 1;
                     state_next <= waiting;
                     ball_miss <= '1';
                 end if;
             when game_over =>
-                if (ctl_up = '1' OR ctl_down = '1') then
+                if (ctl_left = '1' OR ctl_right = '1') then
                     state_next <= start;
                 end if;
         end case;
@@ -116,7 +113,7 @@ begin
             state <= start;
             ball_x <= (others => '0');
             ball_y <= (others => '0');
-            bar_1_y <= conv_std_logic_vector(SCREEN_HEIGHT / 2 - BAR_HEIGHT / 2, 10);
+            bar_1_x <= conv_std_logic_vector(SCREEN_WIDTH / 2 - BAR_WIDTH / 2, 10);
             ball_h_dir <= '0';
             ball_v_dir <= '0';
             bounce_counter <= (others => '0');
@@ -126,7 +123,7 @@ begin
             state <= state_next;
             ball_x <= ball_x_next;
             ball_y <= ball_y_next;
-            bar_1_y <= bar_1_y_next;
+            bar_1_x <= bar_1_x_next;
             ball_h_dir <= ball_h_dir_next;
             ball_v_dir <= ball_v_dir_next;
             bounce_counter <= bounce_counter_next;
@@ -185,40 +182,78 @@ begin
         ball_x, ball_y,
         ball_h_dir, ball_v_dir,
         ball_h_dir_next, ball_v_dir_next,
-        bar_1_y
+        bar_1_x
     )
     begin
         ball_h_dir_next <= ball_h_dir;
         ball_v_dir_next <= ball_v_dir;
         ball_bounce <= '0';
 
+		-- Changed most of this process code since now our bar is horizontal
+		
         --
         -- BEWARE! Looks like ball_bounce signal is generated twice
         -- due to slower clock! Too lazy to fix now :D
         --
 
-        if  ball_x = bar_1_pos + BAR_WIDTH and
-            ball_y + BALL_SIZE > bar_1_y and
-            ball_y < bar_1_y + BAR_HEIGHT then
-                ball_h_dir_next <= '1';
+		if  ball_y = BAR_1_POS + BAR_HEIGHT and
+            ball_x + BALL_SIZE > bar_1_x and
+            ball_x < bar_1_x + BAR_WIDTH then
+                ball_v_dir_next <= '1';
                 ball_bounce <= '1';
-		-- We've removed bar 2, so check if it collides with right side of screen and rebound
-        elsif ball_x + BALL_SIZE = SCREEN_WIDTH then
-                ball_h_dir_next <= '0';
-		-- Good comment: This will happen if you hit the ball with the side of the bar: you'll invert ball's y direction but... you'll still lose a life?
-		-- PROTIP: I've just realised objects here are described by their bottom left pixel
-        elsif ball_x < bar_1_pos + BAR_WIDTH and
-            ball_x + BALL_SIZE > bar_1_pos then
-                if ball_y + BALL_SIZE = bar_1_y then
-                    ball_v_dir_next <= '0';
-                elsif ball_y = bar_1_y + BAR_HEIGHT then
-                    ball_v_dir_next <= '1';
-                end if;
-        end if;
-            
-        if ball_y = 0 then
+				-- Now that we know ball bounces we can make some gross estimations...
+				-- It's also grossly unadvised for performance's sake, but I won't pre-make any divisions for clarity's sake
+				-- First 10% is rebound 30 degrees to left.
+				if ((conv_integer(ball_x) + BALL_SIZE) / 2) < (conv_integer(bar_1_x) + (BAR_WIDTH * 10 ) / 100) then
+					ball_h_dir_next <= '0';
+					ball_dx <= 2;
+					ball_dy <= 1;
+				-- Then 15% for rebound 45 degrees to left.
+				elsif ((conv_integer(ball_x) + BALL_SIZE) / 2) < (conv_integer(bar_1_x) + (BAR_WIDTH * 25) / 100) then
+					ball_h_dir_next <= '0';
+					ball_dx <= 1;
+					ball_dy <= 1;
+				-- Then 25% for rebound 60 degrees to left.
+				elsif ((conv_integer(ball_x) + BALL_SIZE) / 2) < (conv_integer(bar_1_x) + (BAR_WIDTH * 50) / 100) then
+					ball_h_dir_next <= '0';
+					ball_dx <= 1;
+					ball_dy <= 2;
+				-- Then vertical rebound if you're lucky enough. dy is set to 2 for preventing the ball to appear to be moving too slow with this
+				elsif ((conv_integer(ball_x) + BALL_SIZE) / 2) = (conv_integer(bar_1_x) + (BAR_WIDTH * 50) / 100) then
+					ball_dx <= 0;
+					ball_dy <= 2;
+				-- Then 25% for rebound 60 degrees to right.
+				elsif ((conv_integer(ball_x) + BALL_SIZE) / 2) < (conv_integer(bar_1_x) + (BAR_WIDTH * 75) / 100) then
+					ball_h_dir_next <= '1';
+					ball_dx <= 1;
+					ball_dy <= 2;
+				-- Then 15% for rebound 60 degrees to right.
+				elsif ((conv_integer(ball_x) + BALL_SIZE) / 2) < (conv_integer(bar_1_x) + (BAR_WIDTH * 90) / 100) then
+					ball_h_dir_next <= '1';
+					ball_dx <= 1;
+					ball_dy <= 1;
+				-- Then 10% for rebound 60 degrees to right. Rest of the bar
+				else
+					ball_h_dir_next <= '1';
+					ball_dx <= 2;
+					ball_dy <= 1;
+				end if;
+		-- Ball hits the top of screen
+		elsif ball_y = SCREEN_HEIGHT - BALL_SIZE then
+            ball_v_dir_next <= '0';
+		-- Ball is way too late for being saved but you hit it with any of the sides of the bar
+		elsif ball_y < BAR_1_POS + BAR_WIDTH and ball_y + BALL_SIZE > BAR_1_POS then
+			if ball_x + BALL_SIZE > BAR_1_POS then
+				ball_h_dir_next <= '0';
+			elsif ball_x = bar_1_x + BAR_WIDTH then
+				ball_h_dir_next <= '1';
+			end if;
+		end if;
+		
+		-- Collision with left or right of screen
+        if ball_x = 0 then
             ball_v_dir_next <= '1';
-        elsif ball_y = SCREEN_HEIGHT - BALL_SIZE then
+        elsif ball_x = SCREEN_WIDTH - BALL_SIZE then
             ball_v_dir_next <= '0';
         end if;
     end process;
@@ -231,6 +266,7 @@ begin
         ball_x, ball_y,
         ball_x_next, ball_y_next,
         ball_h_dir, ball_v_dir,
+		ball_dx, ball_dy,
         ball_enable
     )
     begin
@@ -239,14 +275,14 @@ begin
 
         if ball_enable = '1' then
             if ball_h_dir = '1' then
-                ball_x_next <= ball_x + 1;
+                ball_x_next <= ball_x + conv_std_logic_vector(ball_dx, 2);
             else
-                ball_x_next <= ball_x - 1;
+                ball_x_next <= ball_x - conv_std_logic_vector(ball_dx, 2);
             end if;
             if ball_v_dir = '1' then
-                ball_y_next <= ball_y + 1;
+                ball_y_next <= ball_y + conv_std_logic_vector(ball_dy, 2);
             else
-                ball_y_next <= ball_y - 1;
+                ball_y_next <= ball_y - conv_std_logic_vector(ball_dy, 2);
             end if;
         else
             ball_x_next <= conv_std_logic_vector(SCREEN_WIDTH / 2 - BALL_SIZE / 2, 10);
@@ -255,25 +291,20 @@ begin
     end process;
 
     bar_control: process(
-        bar_1_y,
-        ctl_up, ctl_down
+        bar_1_x,
+        ctl_left, ctl_right
     )
     begin
-        bar_1_y_next <= bar_1_y;
+        bar_1_x_next <= bar_1_x;
         
-        if ctl_up = '1' then
-            if bar_1_y > 0 then
-                bar_1_y_next <= bar_1_y - 1;
+        if ctl_left = '1' then
+            if bar_1_x > 0 then
+                bar_1_x_next <= bar_1_x - 1;
             end if;
-        elsif ctl_down = '1' then
-            if bar_1_y < SCREEN_HEIGHT - BAR_HEIGHT - 1 then
-                bar_1_y_next <= bar_1_y + 1;
-            end if;
+        elsif ctl_right = '1' and bar_1_x + BAR_WIDTH + 1 < SCREEN_HEIGHT then
+                bar_1_x_next <= bar_1_x + 1;
         end if;
     end process;
-
-    middle_line_on <= '1' when px_x = MIDDLE_LINE_POS else '0';
-    middle_line_rgb <= "000" when px_y(0) = '1' else "111";
 
     ball_on <= '1' when px_x >= ball_x and
                         px_x < (ball_x + BALL_SIZE) and
@@ -282,10 +313,10 @@ begin
                '0';
 
     -- whether bar_1 is on
-    bar_on <= '1' when (px_x >= BAR_1_POS and
-                        px_x < BAR_1_POS + BAR_WIDTH and
-                        px_y >= bar_1_y and
-                        px_y < bar_1_y + BAR_HEIGHT) else
+    bar_on <= '1' when (px_y >= BAR_1_POS and
+                        px_y < BAR_1_POS + BAR_HEIGHT and
+                        px_x >= bar_1_x and
+                        px_x < bar_1_x + BAR_WIDTH) else
               '0';
 
     ball_addr <= px_y(3 downto 0) - ball_y(3 downto 0);
@@ -294,16 +325,15 @@ begin
     ball_rgb <= "000" when ball_pixel = '1' else "111";
 
 
-    bar_addr <= (px_y(5 downto 0) - bar_1_y(5 downto 0));
+    bar_addr <= (px_x(5 downto 0) - bar_1_x(5 downto 0));
     bar_pos <= BAR_1_POS;
-    bar_pixel <= bar_data(conv_integer(px_x - bar_pos));
+    bar_pixel <= bar_data(conv_integer(px_y - bar_pos));
     bar_rgb <= "000" when bar_pixel = '1' else "111";
 
     process(
         ball_on, bar_on,
         ball_rgb, bar_rgb,
         score_on, message_on, font_rgb,
-        middle_line_on, middle_line_rgb,
         video_on
     )
     begin
@@ -312,8 +342,6 @@ begin
                 rgb_stream <= bar_rgb;
             elsif ball_on = '1' then
                 rgb_stream <= ball_rgb;
-            elsif middle_line_on = '1' then
-                rgb_stream <= middle_line_rgb;
             -- scores and messages share rgb stream
             elsif score_on = '1' or message_on = '1' then
                 rgb_stream <= font_rgb;

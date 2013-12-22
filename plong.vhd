@@ -17,7 +17,7 @@ architecture arch of plong is
 
     signal ball_bounced, ball_missed: std_logic;
 
-    signal ctl_up, ctl_down: std_logic;
+    signal ctl_left, ctl_right: std_logic;
 
 begin
     process (clk, not_reset)
@@ -41,7 +41,7 @@ begin
         entity work.graphics(dispatcher)
         port map(
             clk => clk, not_reset => not_reset,
-            ctl_up => ctl_up, ctl_down => ctl_down,
+            ctl_left => ctl_left, ctl_right => ctl_right,
             px_x => px_x, px_y => px_y,
             video_on => video_on,
             rgb_stream => rgb_next,
