@@ -5,7 +5,7 @@ use ieee.std_logic_unsigned.all;
 entity bar_rom is
     port(
         clk: in std_logic;
-        addr: in std_logic_vector(4 downto 0);
+        addr: in std_logic_vector(5 downto 0);
         data: out std_logic_vector(0 to 127)
     );
 end bar_rom;
@@ -35,7 +35,7 @@ architecture content of bar_rom is
 		"10001000100000101010101010101010000010001010101011001010101000111101111111110101000101010101010101010001000100000101010101010110",
 		"11111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111110"
     );
-    signal addr_reg: std_logic_vector(4 downto 0);
+    signal addr_reg: std_logic_vector(5 downto 0);
 begin
     process(clk)
     begin

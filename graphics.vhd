@@ -83,7 +83,7 @@ begin
 
         case state is
             when start =>
-                cur_lives_next <= conv_std_logic_vector(MAX_LIVES,5);
+                cur_lives_next <= conv_std_logic_vector(MAX_LIVES,6);
                 state_next <= waiting;
             when waiting =>
                 ball_enable <= '0';
@@ -119,9 +119,6 @@ begin
             bounce_counter <= (others => '0');
             score_1 <= (others => '0');
             cur_lives <= (others => '0');
-			-- This way, when enabled, ball will start descending to right at 45 degrees
-			ball_dx <= 1;
-			ball_dy <= 1;
         elsif clk'event and clk = '0' then
             state <= state_next;
             ball_x <= ball_x_next;
@@ -185,7 +182,8 @@ begin
         ball_x, ball_y,
         ball_h_dir, ball_v_dir,
         ball_h_dir_next, ball_v_dir_next,
-        bar_1_x
+        bar_1_x,
+        not_reset
     )
     begin
         ball_h_dir_next <= ball_h_dir;
@@ -198,8 +196,11 @@ begin
         -- BEWARE! Looks like ball_bounce signal is generated twice
         -- due to slower clock! Too lazy to fix now :D
         --
-
-		if  ball_y = BAR_1_POS + BAR_HEIGHT and
+      if not_reset = '0' then
+			-- This way, when enabled, ball will start descending to right at 45 degrees
+			ball_dx <= 1;
+			ball_dy <= 1;
+	   elsif  ball_y = BAR_1_POS + BAR_HEIGHT and
             ball_x + BALL_SIZE > bar_1_x and
             ball_x < bar_1_x + BAR_WIDTH then
                 ball_v_dir_next <= '1';
