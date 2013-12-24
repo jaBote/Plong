@@ -3,3 +3,7 @@ NET "clk" TNM_NET = "clk";
 TIMESPEC "TS_clk" = PERIOD "clk" 20 ns;
 
 NET "not_reset" LOC = "A6" | IOSTANDARD = LVTTL | PULLUP;
+
+NET "button_start" LOC = "V4" | IOSTANDARD = LVTTL | PULLDOWN;
+NET "button_left" LOC = "D18" | IOSTANDARD = LVTTL | PULLDOWN;
+NET "button_right" LOC = "H13" | IOSTANDARD = LVTTL | PULLDOWN;
