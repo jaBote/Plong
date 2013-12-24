@@ -6,7 +6,7 @@ use ieee.std_logic_unsigned.all;
 entity graphics is
     port(
         clk, not_reset: in  std_logic;
-		ctl_left, ctl_right: in  std_logic;
+		  ctl_start, ctl_left, ctl_right: in  std_logic;
         px_x, px_y: in  std_logic_vector(9 downto 0);
         video_on: in  std_logic;
         rgb_stream: out std_logic_vector(2  downto 0);
@@ -22,6 +22,9 @@ architecture dispatcher of graphics is
     type game_states is (start, waiting, playing, game_over);
     signal state, state_next: game_states;
 
+    signal ball_control_counter,
+           ball_control_counter_next: std_logic_vector(17 downto 0);
+
     -- counts how many times the ball hits the bar
     -- used for nothing in particular
     signal bounce_counter, bounce_counter_next: std_logic_vector(7 downto 0);
@@ -34,10 +37,8 @@ architecture dispatcher of graphics is
     signal current_score: std_logic_vector(5 downto 0);
     signal score_font_addr: std_logic_vector(8 downto 0);
 
-    -- message format is "PLAYER p WINS!"
-    -- where p is replaced by player_id
-    signal message_on, player_id_on: std_logic;
-    signal message_font_addr, player_id_font_addr: std_logic_vector(8 downto 0);
+    signal message_on: std_logic;
+    signal message_font_addr: std_logic_vector(8 downto 0);
 
     signal font_addr: std_logic_vector(8 downto 0);
     signal font_data: std_logic_vector(0 to 7);
@@ -59,13 +60,13 @@ architecture dispatcher of graphics is
 
     signal ball_bounce, ball_miss: std_logic;
 
-    constant BAR_1_POS: integer := 20; -- This is now the vertical height the bar starts in
+    constant BAR_1_POS: integer := SCREEN_HEIGHT-20; -- This is now the vertical height the bar starts in (bottom of screen)
 
     constant BAR_WIDTH: integer := 128;
     constant BAR_HEIGHT: integer := 20;
 
     signal bar_pos: integer;
-    signal bar_addr: std_logic_vector(5 downto 0);
+    signal bar_addr: std_logic_vector(4 downto 0);
     signal bar_data: std_logic_vector(0 to BAR_WIDTH - 1);
     signal bar_pixel: std_logic;
     signal bar_rgb: std_logic_vector(2 downto 0);
@@ -74,7 +75,7 @@ architecture dispatcher of graphics is
     signal ball_on, bar_on: std_logic;
 begin
 
-    process(state, ball_y, ctl_left, ctl_right, cur_lives)
+    process(state, ball_y, ctl_start, ctl_left, ctl_right, cur_lives)
     begin
         state_next <= state;
         ball_enable <= '0';
@@ -89,19 +90,19 @@ begin
                 ball_enable <= '0';
                 if cur_lives = 0  then
                     state_next <= game_over;
-                elsif (ctl_left = '1' OR ctl_right = '1') then
+                elsif (ctl_start = '1') then
                     state_next <= playing;
                 end if;
             when playing =>
                 ball_enable <= '1';
-                if ball_y = 0 then
-                    -- player 1 loses a live. Y = 0 is the bottom of the screen
+                if ball_y = SCREEN_HEIGHT - BALL_SIZE then
+                    -- player 1 loses a live. Y = SCREEN_HEIGHT is the bottom of the screen
                     cur_lives_next <= cur_lives - 1;
                     state_next <= waiting;
                     ball_miss <= '1';
                 end if;
             when game_over =>
-                if (ctl_left = '1' OR ctl_right = '1') then
+                if (ctl_start = '1') then
                     state_next <= start;
                 end if;
         end case;
@@ -117,6 +118,7 @@ begin
             ball_h_dir <= '0';
             ball_v_dir <= '0';
             bounce_counter <= (others => '0');
+            ball_control_counter <= (others => '0');
             score_1 <= (others => '0');
             cur_lives <= (others => '0');
         elsif clk'event and clk = '0' then
@@ -127,6 +129,7 @@ begin
             ball_h_dir <= ball_h_dir_next;
             ball_v_dir <= ball_v_dir_next;
             bounce_counter <= bounce_counter_next;
+            ball_control_counter <= ball_control_counter_next;
             score_1 <= score_1_next;
             cur_lives <= cur_lives_next;
         end if;
@@ -142,43 +145,35 @@ begin
     score_font_addr <= conv_std_logic_vector(128, 9) +
                        (current_score(2 downto 0) & current_score(5 downto 3));
 
-    player_id_on <= '1' when state = game_over and px_y(9 downto 3) = 29 and
-                             (px_x(9 downto 3) = 19 or px_x(9 downto 3) = 59) else
-                    '0';
-    -- player_id will display either 1 or 2
-    player_id_font_addr <= "010001000" when px_x < 320 else "010010000";
-
     message_on <= '1' when state = game_over and
                            -- message on the center of the screen
-                           ( px_x(9 downto 3) >= 32 and
-                             px_x(9 downto 3) < 46 and
+                           ( px_x(9 downto 3) >= 52 and
+                             px_x(9 downto 3) < 66 and
                              px_y(9 downto 3) = 29 ) else
                   '0';
     
-	-- TODO change into GAME OVER
 	with px_x(9 downto 3) select
-        message_font_addr <= "110000000" when "0110100"|"0001100", -- P
-                             "101100000" when "0110101"|"0001101", -- L
-                             "100001000" when "0110110"|"0001110", -- A
-                             "111001000" when "0110111"|"0001111", -- Y
-                             "100101000" when "0111000"|"0010000", -- E
-                             "110010000" when "0111001"|"0010001", -- R
-                             "111100000" when "0111011"|"0010011", -- not visible
-                             "110111000" when "0111101"|"0010101", -- W
-                             "101111000" when "0111110"|"0010110", -- O
-                             "101110000" when "0111111"|"0010111", -- N
-                             "000001000" when "1000000"|"0011000", -- !
+        message_font_addr <= "100111000" when "0110100", -- G
+                             "100001000" when "0110101", -- A
+                             "101101000" when "0110110", -- M
+                             "100101000" when "0110111", -- E
+                             "000000000" when "0111000", -- SPACE
+                             "101111000" when "0111001", -- O
+                             "110110000" when "0111010", -- V
+                             "100101000" when "0111011", -- E
+                             "110010000" when "0111100", -- R
+                             "000001000" when "0111101", -- !
                              "000000000" when others;
 
     -- font address mutltiplexer
     font_addr <= px_y(2 downto 0) + score_font_addr when score_on = '1' else
-                 px_y(2 downto 0) + player_id_font_addr when player_id_on = '1' else
                  px_y(2 downto 0) + message_font_addr when message_on = '1' else
                  (others => '0');
     font_pixel <= font_data(conv_integer(px_x(2 downto 0)));
     font_rgb <= "000" when font_pixel = '1' else "111";
 
     direction_control: process(
+        ball_control_counter,
         ball_x, ball_y,
         ball_h_dir, ball_v_dir,
         ball_h_dir_next, ball_v_dir_next,
@@ -200,10 +195,12 @@ begin
 			-- This way, when enabled, ball will start descending to right at 45 degrees
 			ball_dx <= 1;
 			ball_dy <= 1;
-	   elsif  ball_y = BAR_1_POS + BAR_HEIGHT and
+	   elsif ball_control_counter = 0 then
+		
+		  if  ball_y = BAR_1_POS - BAR_HEIGHT and
             ball_x + BALL_SIZE > bar_1_x and
             ball_x < bar_1_x + BAR_WIDTH then
-                ball_v_dir_next <= '1';
+                ball_v_dir_next <= '0';
                 ball_bounce <= '1';
 				-- Now that we know ball bounces we can make some gross estimations...
 				-- It's also grossly unadvised for performance's sake, but I won't pre-make any divisions for clarity's sake
@@ -243,30 +240,34 @@ begin
 					ball_dy <= 1;
 				end if;
 		-- Ball hits the top of screen
-		elsif ball_y = SCREEN_HEIGHT - BALL_SIZE then
-            ball_v_dir_next <= '0';
+		  elsif ball_y = 0 then
+            ball_v_dir_next <= '1';
 		-- Ball is way too late for being saved but you hit it with any of the sides of the bar
-		elsif ball_y < BAR_1_POS + BAR_WIDTH and ball_y + BALL_SIZE > BAR_1_POS then
+		  elsif ball_y < BAR_1_POS + BAR_WIDTH and ball_y + BALL_SIZE > BAR_1_POS then
 			if ball_x + BALL_SIZE > BAR_1_POS then
 				ball_h_dir_next <= '0';
 			elsif ball_x = bar_1_x + BAR_WIDTH then
 				ball_h_dir_next <= '1';
 			end if;
-		end if;
+		  end if;
 		
 		-- Collision with left or right of screen
         if ball_x = 0 then
-            ball_v_dir_next <= '1';
+            ball_h_dir_next <= '1';
         elsif ball_x = SCREEN_WIDTH - BALL_SIZE then
-            ball_v_dir_next <= '0';
+            ball_h_dir_next <= '0';
         end if;
+		end if;
     end process;
 
     bounce_counter_next <= bounce_counter + 1 when ball_bounce = '1' else
                            (others => '0') when ball_miss = '1' else
                            bounce_counter;
 
+    ball_control_counter_next <= ball_control_counter + 1;
+
     ball_control: process(
+		  ball_control_counter,
         ball_x, ball_y,
         ball_x_next, ball_y_next,
         ball_h_dir, ball_v_dir,
@@ -278,6 +279,7 @@ begin
         ball_y_next <= ball_y;
 
         if ball_enable = '1' then
+          if ball_control_counter = 0 then
             if ball_h_dir = '1' then
                 ball_x_next <= ball_x + conv_std_logic_vector(ball_dx, 2);
             else
@@ -288,6 +290,7 @@ begin
             else
                 ball_y_next <= ball_y - conv_std_logic_vector(ball_dy, 2);
             end if;
+			 end if;
         else
             ball_x_next <= conv_std_logic_vector(SCREEN_WIDTH / 2 - BALL_SIZE / 2, 10);
             ball_y_next <= conv_std_logic_vector(SCREEN_HEIGHT / 2 - BALL_SIZE / 2, 10);
@@ -305,7 +308,7 @@ begin
             if bar_1_x > 0 then
                 bar_1_x_next <= bar_1_x - 1;
             end if;
-        elsif ctl_right = '1' and bar_1_x + BAR_WIDTH + 1 < SCREEN_HEIGHT then
+        elsif ctl_right = '1' and bar_1_x + BAR_WIDTH + 1 < SCREEN_WIDTH then
                 bar_1_x_next <= bar_1_x + 1;
         end if;
     end process;
@@ -328,10 +331,9 @@ begin
     ball_pixel <= ball_data(conv_integer(ball_px_addr));
     ball_rgb <= "000" when ball_pixel = '1' else "111";
 
-
-    bar_addr <= (px_x(5 downto 0) - bar_1_x(5 downto 0));
+    bar_addr <= (px_y(4 downto 0)- bar_pos);
     bar_pos <= BAR_1_POS;
-    bar_pixel <= bar_data(conv_integer(px_y - bar_pos));
+    bar_pixel <= bar_data(conv_integer(px_x - bar_1_x));
     bar_rgb <= "000" when bar_pixel = '1' else "111";
 
     process(
