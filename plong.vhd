@@ -4,6 +4,7 @@ use ieee.std_logic_1164.all;
 entity plong is
     port (
         clk, not_reset: in std_logic;
+        button_start,button_left,button_right: in std_logic;
         hsync, vsync: out  std_logic;
         rgb: out std_logic_vector(2 downto 0);
         speaker: out std_logic
@@ -17,7 +18,7 @@ architecture arch of plong is
 
     signal ball_bounced, ball_missed: std_logic;
 
-    signal ctl_left, ctl_right: std_logic;
+    signal ctl_start, ctl_left, ctl_right: std_logic;
 
 begin
     process (clk, not_reset)
@@ -41,7 +42,7 @@ begin
         entity work.graphics(dispatcher)
         port map(
             clk => clk, not_reset => not_reset,
-            ctl_left => ctl_left, ctl_right => ctl_right,
+            ctl_start => ctl_start, ctl_left => ctl_left, ctl_right => ctl_right,
             px_x => px_x, px_y => px_y,
             video_on => video_on,
             rgb_stream => rgb_next,
@@ -55,6 +56,17 @@ begin
             clk => clk, not_reset => not_reset,
             bump_sound => ball_bounced, miss_sound => ball_missed,
             speaker => speaker
+        );
+    controller:
+        entity work.controller(arch)
+        port map(
+            button_start => button_start,
+            button_left => button_left,
+            button_right => button_right,
+				clk => clk, not_reset => not_reset,
+            ctl_start => ctl_start,
+            ctl_left => ctl_left,
+            ctl_right => ctl_right
         );
 
     rgb <= rgb_reg;
