@@ -471,6 +471,7 @@ begin
                         px_x < bar_1_x + BAR_WIDTH) else
               '0';
 
+-- WARNING! THIS SET OF SENTENCES BREAK COMPILATION!
 	for i in 0 to BRICK_ROWS - 1 LOOP
 		for j in 0 to BRICK_COLS - 1 LOOP
 			brick_on <= '1' when (	px_x >= BRICK_START_POS_X + (j * BRICK_WIDTH) and
@@ -486,6 +487,7 @@ begin
 			brick_rgb <= "000" when brick_pixel = '1' else "111";
 		end loop;
 	end loop;
+-- END OF WARNING
 	
     ball_addr <= px_y(3 downto 0) - ball_y(3 downto 0);
     ball_px_addr <= px_x(3 downto 0) - ball_x(3 downto 0);
