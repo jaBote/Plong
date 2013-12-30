@@ -458,46 +458,49 @@ begin
 		end if;
 	end process;
 
-    ball_on <= '1' when px_x >= ball_x and
-                        px_x < (ball_x + BALL_SIZE) and
-                        px_y >= ball_y and
-                        px_y < (ball_y + BALL_SIZE) else
-               '0';
+		ball_on <= '1' when px_x >= ball_x and
+							px_x < (ball_x + BALL_SIZE) and
+							px_y >= ball_y and
+							px_y < (ball_y + BALL_SIZE) else
+				   '0';
 
-    -- whether bar_1 is on
-    bar_on <= '1' when (px_y >= BAR_1_POS and
-                        px_y < BAR_1_POS + BAR_HEIGHT and
-                        px_x >= bar_1_x and
-                        px_x < bar_1_x + BAR_WIDTH) else
-              '0';
+		-- whether bar_1 is on
+		bar_on <= '1' when (px_y >= BAR_1_POS and
+							px_y < BAR_1_POS + BAR_HEIGHT and
+							px_x >= bar_1_x and
+							px_x < bar_1_x + BAR_WIDTH) else
+				  '0';
 
--- WARNING! THIS SET OF SENTENCES BREAK COMPILATION!
-	for i in 0 to BRICK_ROWS - 1 LOOP
-		for j in 0 to BRICK_COLS - 1 LOOP
-			brick_on <= '1' when (	px_x >= BRICK_START_POS_X + (j * BRICK_WIDTH) and
-									px_x < BRICK_START_POS_X + ((j+1) * BRICK_WIDTH) and
-									px_y >= BRICK_START_POS_Y + (i * BRICK_HEIGHT) and
-									px_y < BRICK_START_POS_Y + ((i+1) * BRICK_HEIGHT) and
-									brick_array(i,j) = '1')
-				else '0';
-			
-			-- Unsure on this loop from now on, just a copycat for the bar one
-			brick_addr <= (px_y(4 downto 0) - (BRICK_START_POS_Y + (i * BRICK_HEIGHT)) );
-			brick_pixel <= brick_data(conv_integer(px_x - (BRICK_START_POS_X + (j * BRICK_WIDTH))));
-			brick_rgb <= "000" when brick_pixel = '1' else "111";
+process(px_x, px_y)
+begin
+		for i in 0 to BRICK_ROWS - 1 LOOP
+			for j in 0 to BRICK_COLS - 1 LOOP
+				if ( px_x >= BRICK_START_POS_X + (j * BRICK_WIDTH) and
+					px_x < BRICK_START_POS_X + ((j+1) * BRICK_WIDTH) and
+					px_y >= BRICK_START_POS_Y + (i * BRICK_HEIGHT) and
+					px_y < BRICK_START_POS_Y + ((i+1) * BRICK_HEIGHT) and
+					brick_array(i,j) = '1') then
+						brick_on <= '1';
+					else brick_on <= '0';
+				end if;
+				
+				-- Unsure on this loop from now on, just a copycat for the bar one
+				brick_addr <= (px_y(4 downto 0) - (BRICK_START_POS_Y + (i * BRICK_HEIGHT)) );
+				brick_pixel <= brick_data(conv_integer(px_x - (BRICK_START_POS_X + (j * BRICK_WIDTH))));
+			end loop;
 		end loop;
-	end loop;
--- END OF WARNING
-	
-    ball_addr <= px_y(3 downto 0) - ball_y(3 downto 0);
-    ball_px_addr <= px_x(3 downto 0) - ball_x(3 downto 0);
-    ball_pixel <= ball_data(conv_integer(ball_px_addr));
-    ball_rgb <= "000" when ball_pixel = '1' else "111";
+end process;
+		brick_rgb <= "000" when brick_pixel = '1' else "111";
+		
+		ball_addr <= px_y(3 downto 0) - ball_y(3 downto 0);
+		ball_px_addr <= px_x(3 downto 0) - ball_x(3 downto 0);
+		ball_pixel <= ball_data(conv_integer(ball_px_addr));
+		ball_rgb <= "000" when ball_pixel = '1' else "111";
 
-    bar_addr <= (px_y(4 downto 0)- bar_pos);
-    bar_pos <= BAR_1_POS;
-    bar_pixel <= bar_data(conv_integer(px_x - bar_1_x));
-    bar_rgb <= "000" when bar_pixel = '1' else "111";
+		bar_addr <= (px_y(4 downto 0)- bar_pos);
+		bar_pos <= BAR_1_POS;
+		bar_pixel <= bar_data(conv_integer(px_x - bar_1_x));
+		bar_rgb <= "000" when bar_pixel = '1' else "111";
 	
     process(
         ball_on, bar_on, brick_on,
@@ -542,4 +545,6 @@ begin
     ball_missed <= ball_miss;
 
 end dispatcher;
+
+
 
