@@ -536,6 +536,10 @@ end process;
     bar_unit:
         entity work.bar_rom(content)
         port map(clk => clk, addr => bar_addr, data => bar_data);
+	
+	brick_unit:
+		entity work.brick_rom(content)
+		port map(addr => brick_addr, data => brick_data);
 
     font_unit:
         entity work.codepage_rom(content)
