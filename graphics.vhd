@@ -6,7 +6,7 @@ use ieee.std_logic_unsigned.all;
 entity graphics is
     port(
         clk, not_reset: in  std_logic;
-		  ctl_start, ctl_left, ctl_right: in  std_logic;
+		ctl_start, ctl_left, ctl_right: in  std_logic; -- ctl_start will also launch the ball
         px_x, px_y: in  std_logic_vector(9 downto 0);
         video_on: in  std_logic;
         rgb_stream: out std_logic_vector(2  downto 0);
@@ -19,7 +19,7 @@ architecture dispatcher of graphics is
     constant SCREEN_WIDTH: integer := 640;
     constant SCREEN_HEIGHT: integer := 480;
 
-    type game_states is (start, waiting, playing, player_won, game_over);
+    type game_states is (start, waiting, ball_start, playing, player_won, game_over);
     signal state, state_next: game_states;
 	signal win_flag: std_logic;
 
@@ -56,6 +56,7 @@ architecture dispatcher of graphics is
     signal ball_x, ball_x_next: std_logic_vector(9 downto 0);
     signal ball_y, ball_y_next: std_logic_vector(9 downto 0);
 	signal ball_dx, ball_dy: integer;
+	signal ball_stuck, ball_stuck_next: std_logic;
 
     signal ball_h_dir, ball_h_dir_next, ball_v_dir, ball_v_dir_next: std_logic;
 
@@ -132,10 +133,17 @@ begin
                     if (cur_lives = MAX_LIVES) then
 						brick_init <= '1';
 					end if;
-					state_next <= playing;
+					state_next <= ball_start;
                 end if;
+			when ball_start =>
+				ball_enable <= '1';
+				ball_stuck_next <= '1';
+                if (ctl_start = '1') then
+                    state_next <= playing;
+                end if;				
             when playing =>
                 ball_enable <= '1';
+				ball_stuck_next <= '0';
                 if ball_y = SCREEN_HEIGHT - BALL_SIZE then
                     -- player 1 loses a live. Y = SCREEN_HEIGHT is the bottom of the screen
                     cur_lives_next <= cur_lives - 1;
@@ -167,6 +175,7 @@ begin
             ball_v_dir <= '0';
             bounce_counter <= (others => '0');
             ball_control_counter <= (others => '0');
+			ball_stuck <= '0';
             score_1 <= (others => '0');
             cur_lives <= (others => '0');
 			brick_count <= BRICK_MAX;
@@ -180,6 +189,7 @@ begin
             ball_v_dir <= ball_v_dir_next;
             bounce_counter <= bounce_counter_next;
             ball_control_counter <= ball_control_counter_next;
+			ball_stuck <= ball_stuck_next;
             score_1 <= score_1_next;
             cur_lives <= cur_lives_next;
 			brick_count <= brick_count_next;
@@ -244,9 +254,15 @@ begin
         -- due to slower clock! Too lazy to fix now :D
         --
 		if not_reset = '0' then
-			-- This way, when enabled, ball will start descending to right at 45 degrees
+			-- This way, when enabled, ball will start descending to left at 45 degrees
 			ball_dx <= 1;
 			ball_dy <= 1;
+		elsif ball_stuck <= '1' then
+			-- This way, when unstuck, ball will start descending to left at 45 degrees for hitting the bar
+			ball_dx <= 1;
+			ball_dy <= 1;
+			ball_v_dir_next <= '1';
+			ball_h_dir_next <= '0';
 		elsif ball_control_counter = 0 then
 			if ball_y = BAR_1_POS - BAR_HEIGHT and
             ball_x + BALL_SIZE > bar_1_x and
@@ -279,12 +295,12 @@ begin
 					ball_h_dir_next <= '1';
 					ball_dx <= 1;
 					ball_dy <= 2;
-				-- Then 15% for rebound 60 degrees to right.
+				-- Then 15% for rebound 45 degrees to right.
 				elsif ((conv_integer(ball_x) + BALL_SIZE) / 2) < (conv_integer(bar_1_x) + (BAR_WIDTH * 90) / 100) then
 					ball_h_dir_next <= '1';
 					ball_dx <= 1;
 					ball_dy <= 1;
-				-- Then 10% for rebound 60 degrees to right. Rest of the bar
+				-- Then 10% for rebound 30 degrees to right. Rest of the bar
 				else
 					ball_h_dir_next <= '1';
 					ball_dx <= 2;
@@ -401,18 +417,21 @@ begin
         ball_y_next <= ball_y;
 
         if ball_enable = '1' then
-          if ball_control_counter = 0 then
-            if ball_h_dir = '1' then
-                ball_x_next <= ball_x + conv_std_logic_vector(ball_dx, 2);
-            else
-                ball_x_next <= ball_x - conv_std_logic_vector(ball_dx, 2);
-            end if;
-            if ball_v_dir = '1' then
-                ball_y_next <= ball_y + conv_std_logic_vector(ball_dy, 2);
-            else
-                ball_y_next <= ball_y - conv_std_logic_vector(ball_dy, 2);
-            end if;
-			 end if;
+			if ball_stuck = '1' then -- Place ball on a region so that it'll go 45 deg to right when unstuck
+				ball_x_next <= bar_1_x + conv_std_logic_vector( ((BAR_WIDTH*75) / 100), 10);
+				ball_y_next <= conv_std_logic_vector(BAR_1_POS + BAR_HEIGHT + BALL_SIZE, 10);
+			elsif ball_control_counter = 0 then
+				if ball_h_dir = '1' then
+					ball_x_next <= ball_x + conv_std_logic_vector(ball_dx, 2);
+				else
+					ball_x_next <= ball_x - conv_std_logic_vector(ball_dx, 2);
+				end if;
+				if ball_v_dir = '1' then
+					ball_y_next <= ball_y + conv_std_logic_vector(ball_dy, 2);
+				else
+					ball_y_next <= ball_y - conv_std_logic_vector(ball_dy, 2);
+				end if;
+			end if;
         else
             ball_x_next <= conv_std_logic_vector(SCREEN_WIDTH / 2 - BALL_SIZE / 2, 10);
             ball_y_next <= conv_std_logic_vector(SCREEN_HEIGHT / 2 - BALL_SIZE / 2, 10);
@@ -452,6 +471,8 @@ begin
 		if brick_array_next(brick_broken_row,brick_broken_col) = '1' then 
 			brick_array_next(brick_broken_row,brick_broken_col) <= '0';
 			brick_count_next <= brick_count - 1;
+			score_1_next <= score_1 + 1;
+			
 		end if;
 		if brick_count = 0 then
 			win_flag <= '1';
