@@ -75,8 +75,8 @@ architecture dispatcher of graphics is
     signal bar_1_x, bar_1_x_next: std_logic_vector(9 downto 0);
 	
 	-- We need this type for the bricks array...
-	constant BRICK_ROWS: integer := 3;-- 5;
-	constant BRICK_COLS: integer := 4;-- 13;
+	constant BRICK_ROWS: integer := 5;
+	constant BRICK_COLS: integer := 13;
 	type brick_matrix is array (BRICK_ROWS-1 downto 0, BRICK_COLS-1 downto 0) of std_logic; -- Original game matrix is 5 rows by 13 columns
 	
 	constant BRICK_WIDTH: integer := 40;
@@ -86,21 +86,20 @@ architecture dispatcher of graphics is
 	constant BRICK_MAX: integer := BRICK_ROWS * BRICK_COLS; 
 	constant BRICK_START: brick_matrix := -- Possibly unneeded?
 		(
-		   ('1','1','1','1'),('1','1','1','1'),('1','1','1','1')
---			('1','1','1','1','1','1','1','1','1','1','1','1','1'),
---			('1','1','1','1','1','1','1','1','1','1','1','1','1'),
---			('1','1','1','1','1','1','1','1','1','1','1','1','1'),
---			('1','1','1','1','1','1','1','1','1','1','1','1','1'),
---			('1','1','1','1','1','1','1','1','1','1','1','1','1')
+			('1','1','1','1','1','1','1','1','1','1','1','1','1'),
+			('1','1','1','1','1','1','1','1','1','1','1','1','1'),
+			('1','1','1','1','1','1','1','1','1','1','1','1','1'),
+			('1','1','1','1','1','1','1','1','1','1','1','1','1'),
+			('1','1','1','1','1','1','1','1','1','1','1','1','1')
 		);
---	constant BRICK_END: brick_matrix :=  -- Possibly unneeded too?
---		(
---			('0','0','0','0','0','0','0','0','0','0','0','0','0'),
---			('0','0','0','0','0','0','0','0','0','0','0','0','0'),
---			('0','0','0','0','0','0','0','0','0','0','0','0','0'),
---			('0','0','0','0','0','0','0','0','0','0','0','0','0'),
---			('0','0','0','0','0','0','0','0','0','0','0','0','0')
---		);
+	constant BRICK_END: brick_matrix :=  -- Possibly unneeded too?
+		(
+			('0','0','0','0','0','0','0','0','0','0','0','0','0'),
+			('0','0','0','0','0','0','0','0','0','0','0','0','0'),
+			('0','0','0','0','0','0','0','0','0','0','0','0','0'),
+			('0','0','0','0','0','0','0','0','0','0','0','0','0'),
+			('0','0','0','0','0','0','0','0','0','0','0','0','0')
+		);
 
 	signal brick_addr: std_logic_vector(4 downto 0);
 	signal brick_data: std_logic_vector(0 to BRICK_WIDTH - 1);
@@ -180,7 +179,7 @@ begin
 			score_1 <= (others => '0');
 			cur_lives <= (others => '0');
 			brick_count <= BRICK_MAX;
---			brick_array <= BRICK_END;
+			brick_array <= BRICK_END;
 		elsif clk'event and clk = '0' then
 			state <= state_next;
 			ball_x <= ball_x_next;
@@ -253,14 +252,8 @@ begin
         -- BEWARE! Looks like ball_bounce signal is generated twice
         -- due to slower clock! Too lazy to fix now :D
         --
-		if not_reset = '0' then
-			-- This way, when enabled, ball will start ascending to left at 45 degrees
-			ball_dx <= 1;
-			ball_dy <= 1;
-			ball_h_dir_next <= '1';
-			ball_v_dir_next <= '0';
-		elsif ball_stuck = '1' then
-			-- This way, when unstuck, ball will start ascending to left at 45 degrees
+		if not_reset = '0' or ball_stuck = '1' then
+			-- This way, when enabled or unstuck, ball will start ascending to right at 45 degrees
 			ball_dx <= 1;
 			ball_dy <= 1;
 			ball_h_dir_next <= '1';
@@ -321,84 +314,47 @@ begin
 			end if;
 		
 			-- Collision with left or right edge of screen
-			if ball_x = 0 then
+			if ball_x <= ball_dx then
 			ball_h_dir_next <= '1';
-			elsif ball_x = SCREEN_WIDTH - BALL_SIZE then
+			elsif ball_x + BALL_SIZE >= SCREEN_WIDTH - ball_dx then
 				ball_h_dir_next <= '0';
 			end if;
 			
 			-- Collision with brick. Will only use the center of the ball in case of doubt between two blocks
---			for i in 0 to BRICK_ROWS - 1 LOOP
---				for j in 0 to BRICK_COLS - 1 LOOP
---					if brick_array(i,j) = '1' then -- if brick exists...
---					
---						-- Two separate ifs because if you hit a block on its corner you'd hit both sides at the same time
---						-- I know you could sum both of them up to a only 1 monstruous if comparison, but
---						-- that would crazily harm readability.
---
---						-- Vertical collisions: both from the top or the bottom of the brick
---						if ball_y + BALL_SIZE = BRICK_START_POS_Y + (i * BRICK_HEIGHT) or -- Top of the brick
---							ball_y = BRICK_START_POS_Y + (i * BRICK_HEIGHT) then -- Bottom of the brick
---							if ball_x + BALL_SIZE >= BRICK_START_POS_X + (j * BRICK_WIDTH) and 
---								ball_x < BRICK_START_POS_X + ((j+1) * BRICK_WIDTH) then -- Ball hits the brick somewhere
---								if ball_x < BRICK_START_POS_X + (j * BRICK_WIDTH) then -- Ball overflows to the left
---									if j = 0 or -- First column: immediate bump
---										brick_array(i, j-1) = '0' or -- No brick to the left: immediate bump
---										ball_x + (BALL_SIZE/2) >= BRICK_START_POS_X + (j * BRICK_WIDTH) then -- Intermediate column: check if its center is in this brick
---										brick_broken_row <= i;
---										brick_broken_col <= j;
---										ball_v_dir_next <= not ball_v_dir_next;
---									-- No need for else since the other block will be hit in the next iteration
---									end if;
---								elsif ball_x + BALL_SIZE > BRICK_START_POS_X + ((j+1) * BRICK_WIDTH) then -- Ball overflows to the right
---									if j = BRICK_COLS - 1 or -- Last column: immediate bump.
---										brick_array(i, j+1) = '0' or -- No brick to the right: immediate bump
---										ball_x + (BALL_SIZE/2) <= BRICK_START_POS_X + ((j+1) * BRICK_WIDTH) then -- Intermediate column: check if its center is in this brick
---										brick_broken_row <= i;
---										brick_broken_col <= j;
---										ball_v_dir_next <= not ball_v_dir_next;
---									end if;
---								else -- Ball is all on the brick
---									brick_broken_row <= i;
---									brick_broken_col <= j;
---									ball_v_dir_next <= not ball_v_dir_next;
---								end if;	
---							end if;	
---						end if;
---					
---						-- Horizontal collisions both from the left or the right of the brick
---						if ball_x + BALL_SIZE = BRICK_START_POS_X + (j * BRICK_WIDTH) or -- Left side of the brick
---							ball_x = BRICK_START_POS_X + (j * BRICK_WIDTH) then -- Right side of the brick
---							if ball_y + BALL_SIZE >= BRICK_START_POS_Y + (i * BRICK_HEIGHT) and 
---								ball_y < BRICK_START_POS_Y + ((i+1) * BRICK_HEIGHT) and -- Ball hits the brick somewhere
---								brick_array(i,j) = '1' then -- ...and brick exists
---								if ball_y < BRICK_START_POS_Y + (i * BRICK_HEIGHT) then -- Ball overflows to the upper side
---									if i = 0 or -- First row: immediate bump
---									brick_array(i-1, j) = '0' or -- No brick up: immediate bump
---									ball_y + (BALL_SIZE/2) >= BRICK_START_POS_Y + (i * BRICK_HEIGHT) then -- Intermediate row: check if its center is in this brick
---										brick_broken_row <= i;
---										brick_broken_col <= j;
---										ball_h_dir_next <= not ball_h_dir_next;
---									-- No need for else since the other block will be hit in the next iteration
---									end if;
---								elsif ball_y + BALL_SIZE > BRICK_START_POS_Y + ((i+1) * BRICK_HEIGHT) then -- Ball overflows to the down side
---									if i = BRICK_ROWS - 1 or -- Last row: immediate bump.
---										brick_array(i+1, j) = '0' or -- No brick down: immediate bump
---										ball_y + (BALL_SIZE/2) <= BRICK_START_POS_Y + ((i+1) * BRICK_HEIGHT) then -- Intermediate row: check if its center is in this brick
---										brick_broken_row <= i;
---										brick_broken_col <= j;
---										ball_h_dir_next <= not ball_h_dir_next;
---									end if;
---								else -- Ball is all on the brick
---									brick_broken_row <= i;
---									brick_broken_col <= j;
---									ball_h_dir_next <= not ball_h_dir_next;
---								end if;	
---							end if;
---						end if;
---					end if;
---				end loop;
---			end loop;
+			for i in 0 to BRICK_ROWS - 1 LOOP
+				for j in 0 to BRICK_COLS - 1 LOOP
+					if brick_array(i,j) = '1' then -- if brick exists...
+					
+						-- Two separate ifs because if you hit a block on its corner you'd hit both sides at the same time
+						-- I know you could sum both of them up to a only 1 monstruous if comparison, but
+						-- that would crazily harm readability.
+
+						-- Vertical collisions: both from the top or the bottom of the brick
+						if ball_y + BALL_SIZE = BRICK_START_POS_Y + (i * BRICK_HEIGHT) or -- Top of the brick
+							ball_y = BRICK_START_POS_Y + (i * BRICK_HEIGHT) then -- Bottom of the brick
+							if ball_x + BALL_SIZE/2 >= BRICK_START_POS_X + (j * BRICK_WIDTH) and  -- Center of the ball proection is on the brick
+								ball_x + BALL_SIZE/2 <= BRICK_START_POS_X + ((j+1) * BRICK_WIDTH) and
+								brick_array(i,j) = '1' then -- ...and brick exists
+									brick_broken_row <= i;
+									brick_broken_col <= j;
+									ball_v_dir_next <= not ball_v_dir_next;
+							end if;
+						end if;
+							
+						-- Horizontal collisions both from the left or the right of the brick
+						if ball_x + BALL_SIZE = BRICK_START_POS_X + (j * BRICK_WIDTH) or -- Left side of the brick
+							ball_x = BRICK_START_POS_X + (j * BRICK_WIDTH) then -- Right side of the brick
+							if ball_y + BALL_SIZE/2 >= BRICK_START_POS_Y + (i * BRICK_HEIGHT) and -- Center of the ball projection is on the brick
+								ball_y + BALL_SIZE/2 <= BRICK_START_POS_Y + ((i+1) * BRICK_HEIGHT) and 
+								brick_array(i,j) = '1' then -- ...and brick exists
+									brick_broken_row <= i;
+									brick_broken_col <= j;
+									ball_h_dir_next <= not ball_h_dir_next;
+							end if;
+						end if;	
+					end if;
+				end loop;
+			end loop;
 		end if;
 	end process;
 
@@ -503,17 +459,15 @@ begin
 				if ( px_x >= BRICK_START_POS_X + (j * BRICK_WIDTH) and
 					  px_x < BRICK_START_POS_X + ((j+1) * BRICK_WIDTH) and
 					  px_y >= BRICK_START_POS_Y + (i * BRICK_HEIGHT) and
-					  px_y < BRICK_START_POS_Y + ((i+1) * BRICK_HEIGHT) --and
---                brick_array(i,j) = '1'
+					  px_y < BRICK_START_POS_Y + ((i+1) * BRICK_HEIGHT) and
+						brick_array(i,j) = '1'
 					  
 					  ) 
 					  then
 						brick_on <= '1';
-						brick_addr <= conv_std_logic_vector(conv_integer(px_y - (BRICK_START_POS_Y + (i * BRICK_HEIGHT))) ,5);
+						brick_addr <= px_y - (BRICK_START_POS_Y + (i * BRICK_HEIGHT));
 						brick_pixel <= brick_data(conv_integer(px_x - (BRICK_START_POS_X + (j * BRICK_WIDTH))));
 				end if;
-				
-				-- Unsure on this loop from now on, just a copycat for the bar one
 			end loop;
 		end loop;
 	else
