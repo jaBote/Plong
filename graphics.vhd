@@ -19,9 +19,8 @@ architecture dispatcher of graphics is
     constant SCREEN_WIDTH: integer := 640;
     constant SCREEN_HEIGHT: integer := 480;
 
-    type game_states is (start, waiting, ball_start, playing, player_won, game_over);
-    signal state, state_next: game_states;
-	signal win_flag: std_logic;
+	type game_states is (start, waiting, ball_start, playing, player_won, game_over);
+	signal state, state_next: game_states;
 
     signal ball_control_counter,
            ball_control_counter_next: std_logic_vector(17 downto 0);
@@ -53,8 +52,9 @@ architecture dispatcher of graphics is
     signal ball_data: std_logic_vector(0 to BALL_SIZE - 1);
     signal ball_pixel: std_logic;
     signal ball_rgb: std_logic_vector(2 downto 0);
-    signal ball_x, ball_x_next: std_logic_vector(9 downto 0);
-    signal ball_y, ball_y_next: std_logic_vector(9 downto 0);
+    signal ball_x, ball_x_next, ball_x_last: std_logic_vector(9 downto 0);
+    signal ball_y, ball_y_next, ball_y_last: std_logic_vector(9 downto 0);
+	 signal ball_keep: std_logic;
 	signal ball_dx, ball_dy: integer;
 	signal ball_stuck, ball_stuck_next: std_logic;
 
@@ -75,8 +75,8 @@ architecture dispatcher of graphics is
     signal bar_1_x, bar_1_x_next: std_logic_vector(9 downto 0);
 	
 	-- We need this type for the bricks array...
-	constant BRICK_ROWS: integer := 5;
-	constant BRICK_COLS: integer := 13;
+	constant BRICK_ROWS: integer := 2;--5;
+	constant BRICK_COLS: integer := 2;--13;
 	type brick_matrix is array (BRICK_ROWS-1 downto 0, BRICK_COLS-1 downto 0) of std_logic; -- Original game matrix is 5 rows by 13 columns
 	
 	constant BRICK_WIDTH: integer := 40;
@@ -86,29 +86,27 @@ architecture dispatcher of graphics is
 	constant BRICK_MAX: integer := BRICK_ROWS * BRICK_COLS; 
 	constant BRICK_START: brick_matrix := -- Possibly unneeded?
 		(
-			('1','1','1','1','1','1','1','1','1','1','1','1','1'),
-			('1','1','1','1','1','1','1','1','1','1','1','1','1'),
-			('1','1','1','1','1','1','1','1','1','1','1','1','1'),
-			('1','1','1','1','1','1','1','1','1','1','1','1','1'),
-			('1','1','1','1','1','1','1','1','1','1','1','1','1')
+			('1','1'),--'1','1','1','1','1','1','1','1','1','1'),
+			('1','1')--,'1','1','1','1','1','1','1','1','1','1','1'),
+--			('1','1','1','1','1','1','1','1','1','1','1','1','1'),
+--			('1','1','1','1','1','1','1','1','1','1','1','1','1'),
+--			('1','1','1','1','1','1','1','1','1','1','1','1','1')
 		);
 	constant BRICK_END: brick_matrix :=  -- Possibly unneeded too?
 		(
-			('0','0','0','0','0','0','0','0','0','0','0','0','0'),
-			('0','0','0','0','0','0','0','0','0','0','0','0','0'),
-			('0','0','0','0','0','0','0','0','0','0','0','0','0'),
-			('0','0','0','0','0','0','0','0','0','0','0','0','0'),
-			('0','0','0','0','0','0','0','0','0','0','0','0','0')
+			('0','0'),--'0','0','0','0','0','0','0','0','0','0','0'),
+			('0','0')--,'0','0','0','0','0','0','0','0','0','0','0'),
+--			('0','0','0','0','0','0','0','0','0','0','0','0','0'),
+--			('0','0','0','0','0','0','0','0','0','0','0','0','0'),
+--			('0','0','0','0','0','0','0','0','0','0','0','0','0')
 		);
 
 	signal brick_addr: std_logic_vector(4 downto 0);
 	signal brick_data: std_logic_vector(0 to BRICK_WIDTH - 1);
 	signal brick_pixel: std_logic;
 	signal brick_rgb: std_logic_vector(2 downto 0);
-	signal brick_array: brick_matrix; -- Will set the bricks
-	signal brick_count, brick_count_next: integer; -- Will count number of broken bricks
-	signal brick_broken_row, brick_broken_col: integer;
-	signal brick_init: std_logic;
+	signal brick_array, brick_array_next: brick_matrix; -- Will set the bricks
+	signal brick_init, brick_remove: std_logic;
 	signal ball_on, bar_on, brick_on: std_logic;
 begin
 
@@ -122,7 +120,8 @@ begin
 		case state is
 			when start =>
 				cur_lives_next <= conv_std_logic_vector(MAX_LIVES,6);
-				brick_init <= '0';
+				brick_remove <= '0';
+--				brick_init <= '1';
 				state_next <= waiting;
 			when waiting =>
 				ball_enable <= '0';
@@ -130,29 +129,28 @@ begin
 				if cur_lives = 0  then
 					state_next <= game_over;
 				elsif (ctl_start = '1') then
-					if (cur_lives = MAX_LIVES) then
-						brick_init <= '1';
-					end if;
 					state_next <= ball_start;
 					end if;
 			when ball_start =>
-				brick_init <= '0';
+--				brick_init <= '0';
 				ball_enable <= '1';
 				if (ctl_start = '1') then
 					state_next <= playing;
 				end if;				
 			when playing =>
 				ball_enable <= '1';
+--				brick_init <= '0';
 				ball_stuck_next <= '0';
-				if ball_y = SCREEN_HEIGHT - BALL_SIZE then
+				if ball_y + BALL_SIZE + ball_dy >= SCREEN_HEIGHT then
 					-- player 1 loses a live. Y = SCREEN_HEIGHT is the bottom of the screen
 					cur_lives_next <= cur_lives - 1;
 					state_next <= waiting;
 					ball_miss <= '1';
-				elsif win_flag = '1' then
+				elsif brick_array = BRICK_END then
 					state_next <= player_won;
 				end if;
 			when game_over =>
+				brick_remove <= '1';
 				if (ctl_start = '1') then
 					state_next <= start;
 				end if;
@@ -178,8 +176,7 @@ begin
 			ball_stuck <= '0';
 			score_1 <= (others => '0');
 			cur_lives <= (others => '0');
-			brick_count <= BRICK_MAX;
-			brick_array <= BRICK_END;
+--			brick_array <= BRICK_START;
 		elsif clk'event and clk = '0' then
 			state <= state_next;
 			ball_x <= ball_x_next;
@@ -192,7 +189,6 @@ begin
 			ball_stuck <= ball_stuck_next;
 			score_1 <= score_1_next;
 			cur_lives <= cur_lives_next;
-			brick_count <= brick_count_next;
 		end if;
 	end process;
 
@@ -208,22 +204,22 @@ begin
 
 	message_on <= '1' when state = game_over and
                            -- message on the center of the screen
-                           ( px_x(9 downto 3) >= 52 and
-                             px_x(9 downto 3) < 66 and
+                           ( px_x(9 downto 3) >= 35 and
+                             px_x(9 downto 3) < 49 and
                              px_y(9 downto 3) = 29 ) else
                  '0';
     
 	with px_x(9 downto 3) select
-        message_font_addr <= "100111000" when "0110100", -- G
-                             "100001000" when "0110101", -- A
-                             "101101000" when "0110110", -- M
-                             "100101000" when "0110111", -- E
-                             "000000000" when "0111000", -- SPACE
-                             "101111000" when "0111001", -- O
-                             "110110000" when "0111010", -- V
-                             "100101000" when "0111011", -- E
-                             "110010000" when "0111100", -- R
-                             "000001000" when "0111101", -- !
+        message_font_addr <= "100111000" when "0100011", -- G
+                             "100001000" when "0100100", -- A
+                             "101101000" when "0100101", -- M
+                             "100101000" when "0100110", -- E
+                             "000000000" when "0100111", -- SPACE
+                             "101111000" when "0101000", -- O
+                             "110110000" when "0101001", -- V
+                             "100101000" when "0101010", -- E
+                             "110010000" when "0101011", -- R
+                             "000001000" when "0101100", -- !
                              "000000000" when others;
 
     -- font address mutltiplexer
@@ -242,9 +238,6 @@ begin
         bar_1_x
     )
     begin
-        ball_h_dir_next <= ball_h_dir;
-        ball_v_dir_next <= ball_v_dir;
-        ball_bounce <= '0';
 
 		-- Changed most of this process code since now our bar is horizontal
 		
@@ -253,14 +246,35 @@ begin
         -- due to slower clock! Too lazy to fix now :D
         --
 		if not_reset = '0' or ball_stuck = '1' then
+
+
+
+
+
 			-- This way, when enabled or unstuck, ball will start ascending to right at 45 degrees
 			ball_dx <= 1;
 			ball_dy <= 1;
 			ball_h_dir_next <= '1';
 			ball_v_dir_next <= '0';
-		elsif ball_control_counter = 0 then
-			if ball_y = BAR_1_POS - BAR_HEIGHT and
-            ball_x + BALL_SIZE > bar_1_x and
+			if state = waiting and cur_lives = MAX_LIVES then
+				brick_array <= BRICK_START;
+				score_1_next <= (others => '0');
+			end if;
+
+			if brick_init = '1' then
+				brick_array <= BRICK_START;
+			elsif brick_remove = '1' then 
+				brick_array <= BRICK_START;
+			end if;
+		elsif clk'event and clk='1' then
+        ball_h_dir_next <= ball_h_dir;
+        ball_v_dir_next <= ball_v_dir;
+        ball_bounce <= '0';
+
+		if ball_control_counter = 0 then
+			if ball_y + BALL_SIZE + ball_dy >= BAR_1_POS and -- If next position is on the bar
+			ball_y + BALL_SIZE <= BAR_1_POS and -- and it's above it
+            ball_x + BALL_SIZE > bar_1_x and -- and its within its action range
             ball_x < bar_1_x + BAR_WIDTH then
                 ball_v_dir_next <= '0';
                 ball_bounce <= '1';
@@ -302,7 +316,7 @@ begin
 					ball_dy <= 1;
 				end if;
 			-- Ball hits the top of screen
-			elsif ball_y = 0 then
+			elsif ball_y - ball_dy - (ball_dy/2) <= 0 then -- hitting or about to hit it. This strange calculation is made so that it avoids tha ball bypassing top of screen and making the player lose a life (weird bug?)
 				ball_v_dir_next <= '1';
 			-- Ball is way too late for being saved but you hit it with any of the sides of the bar
 			elsif ball_y < BAR_1_POS + BAR_WIDTH and ball_y + BALL_SIZE > BAR_1_POS then
@@ -321,40 +335,56 @@ begin
 			end if;
 			
 			-- Collision with brick. Will only use the center of the ball in case of doubt between two blocks
-			for i in 0 to BRICK_ROWS - 1 LOOP
-				for j in 0 to BRICK_COLS - 1 LOOP
-					if brick_array(i,j) = '1' then -- if brick exists...
-					
-						-- Two separate ifs because if you hit a block on its corner you'd hit both sides at the same time
-						-- I know you could sum both of them up to a only 1 monstruous if comparison, but
-						-- that would crazily harm readability.
+--			if ball_x /= ball_x_last and ball_y /= ball_y_last then
+				for i in 0 to BRICK_ROWS - 1 LOOP
+					for j in 0 to BRICK_COLS - 1 LOOP
+						if brick_array(i,j) = '1' then -- if brick exists...
+						
+							-- Two separate ifs because if you hit a block on its corner you'd hit both sides at the same time
+							-- I know you could sum both of them up to a only 1 monstruous if comparison, but
+							-- that would crazily harm readability.
 
-						-- Vertical collisions: both from the top or the bottom of the brick
-						if ball_y + BALL_SIZE = BRICK_START_POS_Y + (i * BRICK_HEIGHT) or -- Top of the brick
-							ball_y = BRICK_START_POS_Y + (i * BRICK_HEIGHT) then -- Bottom of the brick
-							if ball_x + BALL_SIZE/2 >= BRICK_START_POS_X + (j * BRICK_WIDTH) and  -- Center of the ball proection is on the brick
-								ball_x + BALL_SIZE/2 <= BRICK_START_POS_X + ((j+1) * BRICK_WIDTH) and
-								brick_array(i,j) = '1' then -- ...and brick exists
-									brick_broken_row <= i;
-									brick_broken_col <= j;
-									ball_v_dir_next <= not ball_v_dir_next;
+							-- Vertical collisions: both from the top or the bottom of the brick. Counts all around the block.
+							if ball_y + BALL_SIZE >= BRICK_START_POS_Y + (i * BRICK_HEIGHT) and -- Top of the brick
+								ball_y <= BRICK_START_POS_Y + (i * BRICK_HEIGHT) then -- Bottom of the brick
+								if ball_x + BALL_SIZE/2 >= BRICK_START_POS_X + (j * BRICK_WIDTH) and  -- Center of the ball projection is on the brick
+									ball_x + BALL_SIZE/2 <= BRICK_START_POS_X + ((j+1) * BRICK_WIDTH) then
+										brick_array(i,j) <= '0';
+										score_1_next <= score_1 + 1;
+	--									if ball_v_dir = '1' then
+	--										ball_v_dir_next <= '0';
+	--									else
+	--										ball_v_dir_next <= '1';
+	--									end if;
+										ball_v_dir_next <= not ball_v_dir;
+	--									ball_x_last <= ball_x;
+	--									ball_y_last <= ball_y;
+								end if;
 							end if;
+							-- Horizontal collisions both from the left or the right of the brick. Counts all around the block.
+							if ball_x + BALL_SIZE >= BRICK_START_POS_X + (j * BRICK_WIDTH) and -- Left side of the brick
+								ball_x <= BRICK_START_POS_X + (j * BRICK_WIDTH) then -- Right side of the brick
+								if ball_y + BALL_SIZE/2 >= BRICK_START_POS_Y + (i * BRICK_HEIGHT) and -- Center of the ball projection is on the brick
+									ball_y + BALL_SIZE/2 <= BRICK_START_POS_Y + ((i+1) * BRICK_HEIGHT) then
+										brick_array(i,j) <= '0';
+										score_1_next <= score_1 + 1;
+	--									if ball_h_dir = '1' then
+	--										ball_h_dir_next <= '0';
+	--									else
+	--										ball_h_dir_next <= '1';
+	--									end if;
+										ball_h_dir_next <= not ball_h_dir;
+	--									ball_x_last <= ball_x;
+	--									ball_y_last <= ball_y;
+								end if;
+							end if;	
 						end if;
-							
-						-- Horizontal collisions both from the left or the right of the brick
-						if ball_x + BALL_SIZE = BRICK_START_POS_X + (j * BRICK_WIDTH) or -- Left side of the brick
-							ball_x = BRICK_START_POS_X + (j * BRICK_WIDTH) then -- Right side of the brick
-							if ball_y + BALL_SIZE/2 >= BRICK_START_POS_Y + (i * BRICK_HEIGHT) and -- Center of the ball projection is on the brick
-								ball_y + BALL_SIZE/2 <= BRICK_START_POS_Y + ((i+1) * BRICK_HEIGHT) and 
-								brick_array(i,j) = '1' then -- ...and brick exists
-									brick_broken_row <= i;
-									brick_broken_col <= j;
-									ball_h_dir_next <= not ball_h_dir_next;
-							end if;
-						end if;	
-					end if;
+					end loop;
 				end loop;
-			end loop;
+--				ball_x_last <= ball_x;
+--				ball_y_last <= ball_y;
+--			end if;
+		end if;
 		end if;
 	end process;
 
@@ -394,7 +424,7 @@ begin
 			end if;
        else
 			ball_x_next <= conv_std_logic_vector(SCREEN_WIDTH / 2 - BALL_SIZE / 2, 10);
-         ball_y_next <= conv_std_logic_vector(SCREEN_HEIGHT / 2 - BALL_SIZE / 2, 10);
+         ball_y_next <= conv_std_logic_vector(SCREEN_HEIGHT / 2 - BALL_SIZE / 2 + 10, 10);
        end if;
     end process;
 
@@ -413,26 +443,7 @@ begin
                 bar_1_x_next <= bar_1_x + 1;
         end if;
     end process;
-		
-	brick_control: process(
-		brick_count, brick_count_next,
-		brick_array,
-		brick_broken_row, brick_broken_col,
-		brick_init
-	)
-	begin
-		if brick_init = '1' then
-			brick_array <= BRICK_START;
-			win_flag <= '0';
-		elsif brick_count = 0 then
-			win_flag <= '1';
-		end if;
-		if brick_array(brick_broken_row,brick_broken_col) = '1' then 
-			brick_array(brick_broken_row,brick_broken_col) <= '0';
-			brick_count_next <= brick_count - 1;
-			score_1_next <= score_1 + 1;
-		end if;
-	end process;
+
 
 		ball_on <= '1' when px_x >= ball_x and
 							px_x < (ball_x + BALL_SIZE) and
@@ -460,7 +471,7 @@ begin
 					  px_x < BRICK_START_POS_X + ((j+1) * BRICK_WIDTH) and
 					  px_y >= BRICK_START_POS_Y + (i * BRICK_HEIGHT) and
 					  px_y < BRICK_START_POS_Y + ((i+1) * BRICK_HEIGHT) and
-						brick_array(i,j) = '1'
+					  brick_array(i,j) = '1'
 					  
 					  ) 
 					  then
